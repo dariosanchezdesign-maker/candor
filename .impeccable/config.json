@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-08-10T00:24:10.054Z",
+        "reason": "Empty-src screenshot preview thumbnail, hidden until a screenshot is uploaded; confirmed intentional by user in prior session"
+      }
+    ]
+  }
+}

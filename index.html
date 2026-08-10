@@ -1049,7 +1049,7 @@
     </div>
   </main>
 
-  <footer data-reveal>Candor runs entirely in your browser. No data is stored or sent anywhere but Anthropic's API.</footer>
+  <footer data-reveal>Candor runs entirely in your browser and stores nothing on any server we run. Requests go directly to Anthropic — and, if you provide a page URL, to r.jina.ai to fetch its text.</footer>
 </div>
 
 <script>
@@ -1216,15 +1216,15 @@ function renderResults(data){
   html += '<div class="card verdict">';
   html += '<svg class="verdict-mark-bg" width="220" height="220" viewBox="-110 -110 220 220" fill="var(--text)" style="stroke:var(--panel-2)" stroke-width="7" aria-hidden="true"><polygon points="0,-100 86.6,-50 36.4,-21 -50.2,-71"></polygon><polygon points="0,100 86.6,50 36.4,21 -50.2,71"></polygon><polygon points="-50.2,-71 -86.6,-50 -86.6,50 -50.2,71 -10,0"></polygon></svg>';
   html += '<div class="verdict-ring" style="--pct:' + pct + '"><div class="verdict-score"><span id="verdictNum">0</span><span class="of">/' + max + '</span></div></div>';
-  html += '<div class="verdict-copy"><div class="verdict-label">' + data.grade + '</div><div class="verdict-summary">' + data.summary + '</div></div>';
+  html += '<div class="verdict-copy"><div class="verdict-label">' + escapeHtml(data.grade) + '</div><div class="verdict-summary">' + escapeHtml(data.summary) + '</div></div>';
   html += '</div>';
 
   data.dimensions.forEach((d, i) => {
     const rubricItem = RUBRIC.find(r => r.key === d.key) || {name: d.key};
     html += '<div class="dim dim-' + d.score + '" style="--i:' + i + '">';
-    html += '<div class="dim-head"><span class="dim-name">' + rubricItem.name + '</span><span class="badge badge-' + d.score + '">' + (d.score === 2 ? 'Strong' : d.score === 1 ? 'Partial' : 'Absent') + '</span></div>';
-    html += '<p class="dim-rationale">' + d.rationale + '</p>';
-    html += '<div class="dim-fix"><b>Fix — </b>' + d.fix + '</div>';
+    html += '<div class="dim-head"><span class="dim-name">' + escapeHtml(rubricItem.name) + '</span><span class="badge badge-' + d.score + '">' + (d.score === 2 ? 'Strong' : d.score === 1 ? 'Partial' : 'Absent') + '</span></div>';
+    html += '<p class="dim-rationale">' + escapeHtml(d.rationale) + '</p>';
+    html += '<div class="dim-fix"><b>Fix — </b>' + escapeHtml(d.fix) + '</div>';
     html += '</div>';
   });
 
