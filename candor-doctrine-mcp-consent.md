@@ -2,7 +2,7 @@
 
 ### MCP gave agents a way to ask permission. Nobody designed what asking well looks like.
 
-By Dario Sanchez
+By Darío Sánchez
 
 The Model Context Protocol gave AI agents a real, working mechanism for pausing mid-task to ask a human something. It's called elicitation. A server can stop in the middle of an operation, send a structured request back through the client, and wait -- the user responds accept, decline, or cancel, and only then does the agent continue. Technically, it's a solved problem. An agent can ask before it acts.
 
