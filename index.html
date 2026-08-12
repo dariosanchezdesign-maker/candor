@@ -61,7 +61,7 @@
     --score-2-bg:#d1fae5;
   }
   *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:smooth; overflow-x:hidden;}
   @media (prefers-reduced-motion: reduce){
     html{scroll-behavior:auto;}
     *, *::before, *::after{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important;}
@@ -401,6 +401,7 @@
     50%{transform:translate(-50%,-50%) scale(1.4);}
   }
   @media (max-width:640px){
+    .hero-mark-bg{width:200px; height:200px; top:-20px; right:-16px;}
     .how-grid{grid-template-columns:1fr; gap:28px;}
     .how-grid > .how-step:nth-child(2),
     .how-grid > .how-step:nth-child(3){margin-top:0;}
@@ -899,6 +900,13 @@
     font-size:12px;
     margin-top:32px;
   }
+  .footer-link{
+    color:inherit;
+    text-decoration:underline;
+    text-underline-offset:2px;
+    transition:opacity .2s ease;
+  }
+  .footer-link:hover{opacity:0.7;}
 </style>
 </head>
 <body>
@@ -1049,7 +1057,7 @@
     </div>
   </main>
 
-  <footer data-reveal>Candor runs entirely in your browser and stores nothing on any server we run. Requests go directly to Anthropic — and, if you provide a page URL, to r.jina.ai to fetch its text.</footer>
+  <footer data-reveal>Candor runs entirely in your browser and stores nothing on any server we run. Requests go directly to Anthropic — and, if you provide a page URL, to r.jina.ai to fetch its text. <a class="footer-link" href="https://github.com/dariosanchezdesign-maker/candor" target="_blank" rel="noopener">View source</a>.</footer>
 </div>
 
 <script>
