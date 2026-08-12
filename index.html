@@ -449,6 +449,16 @@
     padding:2px 8px;
     border-radius:20px;
   }
+  .hist-corrected-badge{
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    border:1px solid var(--border-strong);
+    border-radius:999px;
+    padding:2px 8px;
+  }
   .clear-hist{
     position:relative;
     background:none;
@@ -832,6 +842,93 @@
     border-radius:0 6px 6px 0;
   }
   .dim-fix b{color:var(--text); font-weight:600;}
+  .dim-correct{margin-top:10px;}
+  .dim-correct-toggle{
+    background:none;
+    border:none;
+    padding:0;
+    font-family:inherit;
+    font-size:12.5px;
+    color:var(--text-muted);
+    text-decoration:underline;
+    text-underline-offset:2px;
+    cursor:pointer;
+    transition:opacity .2s ease;
+  }
+  .dim-correct-toggle:hover{opacity:0.7;}
+  .dim-correct-form{margin-top:10px;}
+  .dim-correct-form textarea{
+    width:100%;
+    min-height:60px;
+    resize:vertical;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 10px;
+    font-family:var(--font);
+    font-size:13px;
+    color:var(--text);
+  }
+  .dim-correct-actions{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-top:8px;
+  }
+  .dim-correct-submit{
+    background:var(--text);
+    color:var(--bg);
+    border:none;
+    border-radius:8px;
+    font-family:var(--font);
+    font-weight:600;
+    font-size:12.5px;
+    padding:6px 14px;
+    cursor:pointer;
+    transition:opacity .2s ease;
+  }
+  .dim-correct-submit:hover{opacity:0.85;}
+  .dim-correct-cancel{
+    background:none;
+    border:none;
+    color:var(--text-muted);
+    font-size:12.5px;
+    text-decoration:underline;
+    text-underline-offset:2px;
+    cursor:pointer;
+  }
+  .dim-correct-cancel:hover{opacity:0.7;}
+  .dim-correct-note{
+    font-size:11.5px;
+    color:var(--text-muted);
+    margin:8px 0 0;
+  }
+  .dim-correct-saved{
+    font-size:13px;
+    color:var(--text-secondary);
+    background:var(--panel-2);
+    border-left:2px solid var(--border-strong);
+    padding:8px 12px;
+    border-radius:0 6px 6px 0;
+    margin-bottom:8px;
+  }
+  .dim-correct-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    margin-right:8px;
+  }
+  .dim-correct-badge::before{
+    content:'';
+    width:6px;height:6px;border-radius:50%;
+    background:currentColor;
+    flex-shrink:0;
+  }
   .chat-card{margin-top:16px;}
   .chat-log{
     display:flex;
@@ -1140,9 +1237,21 @@ function loadHistory(){
 function saveHistoryEntry(data, label){
   const hist = loadHistory();
   const total = data.dimensions.reduce((s,d)=>s+d.score,0);
-  hist.unshift({id: Date.now(), label: label, date: new Date().toISOString(), total: total, max: RUBRIC.length*2, data: data});
+  const entry = {id: Date.now(), label: label, date: new Date().toISOString(), total: total, max: RUBRIC.length*2, data: data};
+  hist.unshift(entry);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(hist.slice(0,20)));
   renderHistory();
+  return entry.id;
+}
+
+function saveCorrection(historyId, dimKey, text){
+  const hist = loadHistory();
+  const entry = hist.find(h => h.id === historyId);
+  if (!entry) return false;
+  if (!entry.corrections) entry.corrections = {};
+  entry.corrections[dimKey] = {text: text, date: new Date().toISOString()};
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+  return true;
 }
 
 function renderHistory(){
@@ -1152,7 +1261,8 @@ function renderHistory(){
   hist.slice(0,8).forEach(h => {
     const d = new Date(h.date);
     const dateStr = (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2);
-    html += '<div class="hist-item" data-id="' + h.id + '"><span class="hist-label">' + escapeHtml(h.label) + '</span><span class="hist-meta"><span class="hist-date">' + dateStr + '</span><span class="hist-score">' + h.total + '/' + h.max + '</span></span></div>';
+    const hasCorrections = h.corrections && Object.keys(h.corrections).length > 0;
+    html += '<div class="hist-item" data-id="' + h.id + '"><span class="hist-label">' + escapeHtml(h.label) + '</span><span class="hist-meta">' + (hasCorrections ? '<span class="hist-corrected-badge">Corrected</span>' : '') + '<span class="hist-date">' + dateStr + '</span><span class="hist-score">' + h.total + '/' + h.max + '</span></span></div>';
   });
   html += '<button class="clear-hist" id="clearHistBtn">Clear history</button></div>';
   els.historyCard.innerHTML = html;
@@ -1160,7 +1270,7 @@ function renderHistory(){
     el.addEventListener('click', () => {
       const id = Number(el.getAttribute('data-id'));
       const entry = loadHistory().find(h => h.id === id);
-      if (entry){ renderResults(entry.data); els.results.scrollIntoView({behavior:'smooth', block:'start'}); }
+      if (entry){ renderResults(entry.data, entry.id); els.results.scrollIntoView({behavior:'smooth', block:'start'}); }
     });
   });
   document.getElementById('clearHistBtn').addEventListener('click', () => {
@@ -1214,8 +1324,39 @@ function animateCount(el, to, duration){
   requestAnimationFrame(tick);
 }
 
-function renderResults(data){
+let currentHistoryId = null;
+
+function buildCorrectionBlock(dimKey, correction){
+  const note = 'Saved to this audit’s history entry on this device only — Candor can’t retrain or improve future audits from it.';
+  if (correction){
+    return '<div class="dim-correct" data-dim-key="' + escapeHtml(dimKey) + '">' +
+      '<div class="dim-correct-saved"><span class="dim-correct-badge">Corrected</span>' + escapeHtml(correction.text) + '</div>' +
+      '<button type="button" class="dim-correct-toggle">Edit correction</button>' +
+      '<div class="dim-correct-form" hidden>' +
+        '<textarea class="dim-correct-input" placeholder="What would you correct about this score?">' + escapeHtml(correction.text) + '</textarea>' +
+        '<div class="dim-correct-actions"><button type="button" class="dim-correct-submit">Save correction</button><button type="button" class="dim-correct-cancel">Cancel</button></div>' +
+        '<p class="dim-correct-note">' + note + '</p>' +
+      '</div>' +
+    '</div>';
+  }
+  return '<div class="dim-correct" data-dim-key="' + escapeHtml(dimKey) + '">' +
+    '<button type="button" class="dim-correct-toggle">Doesn’t seem right?</button>' +
+    '<div class="dim-correct-form" hidden>' +
+      '<textarea class="dim-correct-input" placeholder="What would you correct about this score?"></textarea>' +
+      '<div class="dim-correct-actions"><button type="button" class="dim-correct-submit">Submit correction</button><button type="button" class="dim-correct-cancel">Cancel</button></div>' +
+      '<p class="dim-correct-note">' + note + '</p>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderResults(data, historyId){
   window.__lastResult = data;
+  currentHistoryId = historyId || null;
+  let existingCorrections = {};
+  if (currentHistoryId){
+    const entry = loadHistory().find(h => h.id === currentHistoryId);
+    if (entry && entry.corrections) existingCorrections = entry.corrections;
+  }
   document.getElementById('emptyState').style.display = 'none';
   const total = data.dimensions.reduce((sum, d) => sum + d.score, 0);
   const max = RUBRIC.length * 2;
@@ -1233,6 +1374,9 @@ function renderResults(data){
     html += '<div class="dim-head"><span class="dim-name">' + escapeHtml(rubricItem.name) + '</span><span class="badge badge-' + d.score + '">' + (d.score === 2 ? 'Strong' : d.score === 1 ? 'Partial' : 'Absent') + '</span></div>';
     html += '<p class="dim-rationale">' + escapeHtml(d.rationale) + '</p>';
     html += '<div class="dim-fix"><b>Fix — </b>' + escapeHtml(d.fix) + '</div>';
+    if (currentHistoryId){
+      html += buildCorrectionBlock(d.key, existingCorrections[d.key]);
+    }
     html += '</div>';
   });
 
@@ -1261,6 +1405,28 @@ function renderResults(data){
       text += rubricItem.name + ' — ' + label + '\n' + d.rationale + '\nFix: ' + d.fix + '\n\n';
     });
     navigator.clipboard.writeText(text.trim()).then(() => flashButton(e.target, 'Copied'));
+  });
+
+  els.results.querySelectorAll('.dim-correct').forEach(block => {
+    const dimKey = block.getAttribute('data-dim-key');
+    const toggleBtn = block.querySelector('.dim-correct-toggle');
+    const form = block.querySelector('.dim-correct-form');
+    const textarea = block.querySelector('.dim-correct-input');
+    const submitBtn = block.querySelector('.dim-correct-submit');
+    const cancelBtn = block.querySelector('.dim-correct-cancel');
+
+    toggleBtn.addEventListener('click', () => {
+      if (form.hasAttribute('hidden')){ form.removeAttribute('hidden'); textarea.focus(); }
+      else { form.setAttribute('hidden', ''); }
+    });
+    cancelBtn.addEventListener('click', () => form.setAttribute('hidden', ''));
+    submitBtn.addEventListener('click', () => {
+      const text = textarea.value.trim();
+      if (!text || !currentHistoryId) return;
+      saveCorrection(currentHistoryId, dimKey, text);
+      renderHistory();
+      renderResults(window.__lastResult, currentHistoryId);
+    });
   });
 
   initChat(data);
@@ -1591,9 +1757,9 @@ async function runAudit(){
     const raw = data.content[0].text.trim();
     const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
     const parsed = JSON.parse(jsonStr);
-    renderResults(parsed);
     const label = url ? url : (desc ? desc.slice(0,60) + (desc.length > 60 ? '…' : '') : 'Screenshot audit');
-    saveHistoryEntry(parsed, label);
+    const historyId = saveHistoryEntry(parsed, label);
+    renderResults(parsed, historyId);
   } catch (err){
     showError(err.message || 'Something went wrong calling the API.');
   } finally {
