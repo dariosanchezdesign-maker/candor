@@ -1,0 +1,9 @@
+{
+  "name": "candor",
+  "private": true,
+  "description": "Candor — AI Interaction Auditor",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^10.7.13"
+  }
+}

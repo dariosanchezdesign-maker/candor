@@ -754,6 +754,7 @@
     margin-top:12px;
     display:none;
   }
+  .error-link{color:inherit; font-weight:600; text-decoration:underline;}
   .loading{
     display:none;
     align-items:center;
@@ -1155,7 +1156,9 @@
   <main id="main">
     <div class="card" data-reveal>
       <h2>Model access</h2>
-      <div class="field">
+      <p class="hint" id="freeTierNote">Try Candor free — no key needed. You get a few free audits; after that, add your own Anthropic key to keep going.</p>
+      <button type="button" class="pre-chat-toggle" id="apikeyToggle">Have your own Anthropic key? Use it instead</button>
+      <div class="field" id="apikeyField" style="display:none">
         <label for="apikey">Anthropic API key</label>
         <input type="password" id="apikey" placeholder="sk-ant-..." autocomplete="off">
         <p class="hint">Stays in your browser for this session only. Sent directly to Anthropic's API, never to any other server, never saved.</p>
@@ -1840,6 +1843,69 @@ async function fetchUrlText(url){
   return text.slice(0, 12000);
 }
 
+async function runAuditWithOwnKey(key, desc, url, urlText){
+  const rubricText = RUBRIC.map(r => '- ' + r.key + ' (' + r.name + '): ' + r.ask).join('\n');
+
+  const systemPrompt = 'You are Candor, a rigorous AI interaction design auditor. You evaluate AI product features against a fixed 7-dimension rubric. You are not a cheerleader: if a dimension is genuinely absent, score it 0 and say so plainly. Score each dimension 0 (absent), 1 (partial), or 2 (strong), based only on what is described or shown, not assumptions about what might exist elsewhere in the product. Respond with ONLY valid JSON, no markdown fences, no commentary outside the JSON, matching exactly this shape:\n{"summary": "one or two sentence overall verdict", "grade": "short label like \'Needs work\' or \'Solid foundation\' or \'Trustworthy by design\'", "dimensions": [{"key": "disclosure", "score": 0, "rationale": "one to two sentences, specific to what was described", "fix": "one concrete, actionable fix, not generic advice"}, ...one entry per rubric dimension in this order...]}\n\nRubric:\n' + rubricText;
+
+  const content = [];
+  if (desc) content.push({type: 'text', text: 'Feature description:\n' + desc});
+  if (urlText) content.push({type: 'text', text: 'Extracted text content from ' + url + ' (readable text only, not a visual render, so judge layout-dependent dimensions cautiously):\n' + urlText});
+  if (imageBase64) content.push({type: 'image', source: {type: 'base64', media_type: imageMediaType, data: imageBase64}});
+  if (content.length === 1 && content[0].type === 'image') content.unshift({type: 'text', text: 'Audit the AI feature shown in this screenshot.'});
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-5',
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{role: 'user', content: content}]
+    })
+  });
+
+  if (!res.ok){
+    const errText = await res.text();
+    throw new Error('API error ' + res.status + ': ' + errText.slice(0, 200));
+  }
+
+  const data = await res.json();
+  const raw = data.content[0].text.trim();
+  const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
+  return JSON.parse(jsonStr);
+}
+
+async function runFreeAudit(desc, url, urlText){
+  const res = await fetch('/api/free-audit', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({desc: desc, url: url, urlText: urlText, imageBase64: imageBase64, imageMediaType: imageMediaType})
+  });
+
+  if (!res.ok){
+    let body = {};
+    try { body = await res.json(); } catch(e){}
+    if (body.error === 'VISITOR_CAP_REACHED'){
+      const err = new Error('Free audit limit reached'); err.freeCap = 'visitor'; throw err;
+    }
+    if (body.error === 'GLOBAL_CAP_REACHED'){
+      const err = new Error('Free tier fully booked'); err.freeCap = 'global'; throw err;
+    }
+    throw new Error(body.message || 'Something went wrong running the free audit.');
+  }
+
+  const parsed = await res.json();
+  if (typeof parsed.freeRemaining === 'number') updateFreeRemainingUI(parsed.freeRemaining);
+  delete parsed.freeRemaining;
+  return parsed;
+}
+
 async function runAudit(){
   const key = els.apikey.value.trim();
   const desc = els.desc.value.trim();
@@ -1847,7 +1913,6 @@ async function runAudit(){
   els.errorBox.style.display = 'none';
   els.results.style.display = 'none';
 
-  if (!key){ showError('Enter your Anthropic API key.'); return; }
   if (!desc && !imageBase64 && !url){ showError('Describe the feature, paste a URL, attach a screenshot, or any combination.'); return; }
 
   els.runBtn.disabled = true;
@@ -1867,47 +1932,19 @@ async function runAudit(){
     els.loading.querySelector('span').textContent = 'Reading the interaction against the rubric…';
   }
 
-  const rubricText = RUBRIC.map(r => '- ' + r.key + ' (' + r.name + '): ' + r.ask).join('\n');
-
-  const systemPrompt = 'You are Candor, a rigorous AI interaction design auditor. You evaluate AI product features against a fixed 7-dimension rubric. You are not a cheerleader: if a dimension is genuinely absent, score it 0 and say so plainly. Score each dimension 0 (absent), 1 (partial), or 2 (strong), based only on what is described or shown, not assumptions about what might exist elsewhere in the product. Respond with ONLY valid JSON, no markdown fences, no commentary outside the JSON, matching exactly this shape:\n{"summary": "one or two sentence overall verdict", "grade": "short label like \'Needs work\' or \'Solid foundation\' or \'Trustworthy by design\'", "dimensions": [{"key": "disclosure", "score": 0, "rationale": "one to two sentences, specific to what was described", "fix": "one concrete, actionable fix, not generic advice"}, ...one entry per rubric dimension in this order...]}\n\nRubric:\n' + rubricText;
-
-  const content = [];
-  if (desc) content.push({type: 'text', text: 'Feature description:\n' + desc});
-  if (urlText) content.push({type: 'text', text: 'Extracted text content from ' + url + ' (readable text only, not a visual render, so judge layout-dependent dimensions cautiously):\n' + urlText});
-  if (imageBase64) content.push({type: 'image', source: {type: 'base64', media_type: imageMediaType, data: imageBase64}});
-  if (content.length === 1 && content[0].type === 'image') content.unshift({type: 'text', text: 'Audit the AI feature shown in this screenshot.'});
-
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{role: 'user', content: content}]
-      })
-    });
-
-    if (!res.ok){
-      const errText = await res.text();
-      throw new Error('API error ' + res.status + ': ' + errText.slice(0, 200));
-    }
-
-    const data = await res.json();
-    const raw = data.content[0].text.trim();
-    const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
-    const parsed = JSON.parse(jsonStr);
+    const parsed = key
+      ? await runAuditWithOwnKey(key, desc, url, urlText)
+      : await runFreeAudit(desc, url, urlText);
     const label = url ? url : (desc ? desc.slice(0,60) + (desc.length > 60 ? '…' : '') : 'Screenshot audit');
     const historyId = saveHistoryEntry(parsed, label);
     renderResults(parsed, historyId);
   } catch (err){
-    showError(err.message || 'Something went wrong calling the API.');
+    if (err.freeCap){
+      showFreeCapMessage(err.freeCap === 'global');
+    } else {
+      showError(err.message || 'Something went wrong calling the API.');
+    }
   } finally {
     els.runBtn.disabled = false;
     els.loading.style.display = 'none';
@@ -1917,6 +1954,26 @@ async function runAudit(){
 function showError(msg){
   els.errorBox.textContent = msg;
   els.errorBox.style.display = 'block';
+}
+
+function showFreeCapMessage(isGlobal){
+  const msg = isGlobal
+    ? "Candor's free tier has hit its limit for this month — add your own Anthropic key to keep going."
+    : "You've used your free audits — add your own Anthropic key to keep going.";
+  els.errorBox.innerHTML = msg + ' <a href="#" class="error-link" id="capAddKeyLink">Add your key</a>';
+  els.errorBox.style.display = 'block';
+  document.getElementById('capAddKeyLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    scrollToApiKey();
+  });
+}
+
+function updateFreeRemainingUI(remaining){
+  const note = document.getElementById('freeTierNote');
+  if (!note) return;
+  note.textContent = remaining > 0
+    ? 'Free tier: ' + remaining + ' audit' + (remaining === 1 ? '' : 's') + ' left this month.'
+    : "That was your last free audit for now — add your own Anthropic key to keep going.";
 }
 
 els.runBtn.addEventListener('click', runAudit);
@@ -1961,12 +2018,31 @@ if (location.hash.indexOf('#r=') === 0){
   }
 }
 
+document.getElementById('apikeyToggle').addEventListener('click', () => {
+  const field = document.getElementById('apikeyField');
+  const toggle = document.getElementById('apikeyToggle');
+  const opening = field.style.display === 'none';
+  field.style.display = opening ? 'block' : 'none';
+  toggle.textContent = opening ? 'Hide' : 'Have your own Anthropic key? Use it instead';
+  if (opening) els.apikey.focus();
+});
+
 function scrollToApiKey(){
+  const field = document.getElementById('apikeyField');
+  if (field.style.display === 'none'){
+    field.style.display = 'block';
+    document.getElementById('apikeyToggle').textContent = 'Hide';
+  }
   els.apikey.scrollIntoView({behavior:'smooth', block:'center'});
   els.apikey.focus({preventScroll:true});
 }
-document.getElementById('heroCta').addEventListener('click', scrollToApiKey);
-document.getElementById('howCta').addEventListener('click', scrollToApiKey);
+
+function scrollToStart(){
+  els.desc.scrollIntoView({behavior:'smooth', block:'center'});
+  els.desc.focus({preventScroll:true});
+}
+document.getElementById('heroCta').addEventListener('click', scrollToStart);
+document.getElementById('howCta').addEventListener('click', scrollToStart);
 
 document.getElementById('fillExample').addEventListener('click', () => {
   els.desc.value = els.desc.placeholder;
